@@ -5,14 +5,14 @@ import pandas as pd
 import tiktoken
 from autogen_core import CancellationToken
 from autogen_core.tools import BaseTool
-from graphrag.config.config_file_loader import load_config_from_file
+#from graphrag.config.config_file_loader import load_config_from_file
 from graphrag.query.indexer_adapters import (
     read_indexer_communities,
     read_indexer_entities,
     read_indexer_reports,
 )
-from graphrag.query.llm.base import BaseLLM
-from graphrag.query.llm.get_client import get_llm
+#from graphrag.query.llm.base import BaseLLM
+#from graphrag.query.llm.get_client import get_llm
 from graphrag.query.structured_search.global_search.community_context import GlobalCommunityContext
 from graphrag.query.structured_search.global_search.search import GlobalSearch
 from pydantic import BaseModel, Field
@@ -20,6 +20,10 @@ from pydantic import BaseModel, Field
 from ._config import GlobalContextConfig as ContextConfig
 from ._config import GlobalDataConfig as DataConfig
 from ._config import MapReduceConfig
+
+from graphrag.config.load_config import load_config
+from graphrag.language_model.protocol.base import ChatModel
+from graphrag.language_model.manager import ModelManager
 
 _default_context_config = ContextConfig()
 _default_mapreduce_config = MapReduceConfig()
@@ -103,7 +107,7 @@ class GlobalSearchTool(BaseTool[GlobalSearchToolArgs, GlobalSearchToolReturn]):
     def __init__(
         self,
         token_encoder: tiktoken.Encoding,
-        llm: BaseLLM,
+        chat_model: ChatModel,
         data_config: DataConfig,
         context_config: ContextConfig = _default_context_config,
         mapreduce_config: MapReduceConfig = _default_mapreduce_config,
@@ -115,7 +119,7 @@ class GlobalSearchTool(BaseTool[GlobalSearchToolArgs, GlobalSearchToolReturn]):
             description="Perform a global search with given parameters using graphrag.",
         )
         # Use the provided LLM
-        self._llm = llm
+        self._chat_model = chat_model
 
         # Load parquet files
         community_df: pd.DataFrame = pd.read_parquet(f"{data_config.input_dir}/{data_config.community_table}.parquet")  # type: ignore
@@ -123,13 +127,13 @@ class GlobalSearchTool(BaseTool[GlobalSearchToolArgs, GlobalSearchToolReturn]):
         report_df: pd.DataFrame = pd.read_parquet(  # type: ignore
             f"{data_config.input_dir}/{data_config.community_report_table}.parquet"
         )
-        entity_embedding_df: pd.DataFrame = pd.read_parquet(  # type: ignore
-            f"{data_config.input_dir}/{data_config.entity_embedding_table}.parquet"
-        )
+        # entity_embedding_df: pd.DataFrame = pd.read_parquet(  # type: ignore
+        #     f"{data_config.input_dir}/{data_config.entity_embedding_table}.parquet"
+        # )
 
-        communities = read_indexer_communities(community_df, entity_df, report_df)
-        reports = read_indexer_reports(report_df, entity_df, data_config.community_level)
-        entities = read_indexer_entities(entity_df, entity_embedding_df, data_config.community_level)
+        communities = read_indexer_communities(community_df, report_df)
+        reports = read_indexer_reports(report_df, community_df, data_config.community_level)
+        entities = read_indexer_entities(entity_df, community_df, data_config.community_level)
 
         context_builder = GlobalCommunityContext(
             community_reports=reports,
@@ -163,7 +167,7 @@ class GlobalSearchTool(BaseTool[GlobalSearchToolArgs, GlobalSearchToolReturn]):
         }
 
         self._search_engine = GlobalSearch(
-            llm=self._llm,
+            model=self._chat_model,
             context_builder=context_builder,
             token_encoder=token_encoder,
             max_data_tokens=context_config.max_data_tokens,
@@ -177,12 +181,12 @@ class GlobalSearchTool(BaseTool[GlobalSearchToolArgs, GlobalSearchToolReturn]):
         )
 
     async def run(self, args: GlobalSearchToolArgs, cancellation_token: CancellationToken) -> GlobalSearchToolReturn:
-        search_result = await self._search_engine.asearch(args.query)
+        search_result = await self._search_engine.search(args.query)
         assert isinstance(search_result.response, str), "Expected response to be a string"
         return GlobalSearchToolReturn(answer=search_result.response)
 
     @classmethod
-    def from_settings(cls, settings_path: str | Path) -> "GlobalSearchTool":
+    def from_settings(cls, root_dir: str | Path) -> "GlobalSearchTool":
         """Create a GlobalSearchTool instance from GraphRAG settings file.
 
         Args:
@@ -192,22 +196,27 @@ class GlobalSearchTool(BaseTool[GlobalSearchToolArgs, GlobalSearchToolReturn]):
             An initialized GlobalSearchTool instance
         """
         # Load GraphRAG config
-        config = load_config_from_file(settings_path)
+        config = load_config(root_dir = root_dir)
 
         # Initialize token encoder
-        token_encoder = tiktoken.get_encoding(config.encoding_model)
+        token_encoder = tiktoken.get_encoding(config.models["default_embedding_model"].encoding_model)
 
         # Initialize LLM using graphrag's get_client
-        llm = get_llm(config)
+        # llm = get_llm(config)
+        chat_model = ModelManager().get_or_create_chat_model(
+            name="global_search",
+            model_type=config.models["default_chat_model"].type,
+            config=config.models["default_chat_model"],
+        )
 
         # Create data config from storage paths
         data_config = DataConfig(
-            input_dir=str(Path(config.storage.base_dir)),
+            input_dir=str(Path(config.output.base_dir)),
         )
 
         return cls(
             token_encoder=token_encoder,
-            llm=llm,
+            chat_model=chat_model,
             data_config=data_config,
             context_config=_default_context_config,
             mapreduce_config=_default_mapreduce_config,

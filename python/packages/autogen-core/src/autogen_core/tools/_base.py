@@ -139,7 +139,7 @@ class BaseTool(ABC, Tool, Generic[ArgsT, ReturnT], ComponentBase[BaseModel]):
         if isinstance(value, BaseModel):
             dumped = value.model_dump()
             if isinstance(dumped, dict):
-                return json.dumps(dumped)
+                return json.dumps(dumped, ensure_ascii=False)
             return str(dumped)
 
         return str(value)

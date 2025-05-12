@@ -6,14 +6,14 @@ import pandas as pd
 import tiktoken
 from autogen_core import CancellationToken
 from autogen_core.tools import BaseTool
-from graphrag.config.config_file_loader import load_config_from_file
+#from graphrag.config.config_file_loader import load_config_from_file
 from graphrag.query.indexer_adapters import (
     read_indexer_entities,
     read_indexer_relationships,
     read_indexer_text_units,
 )
-from graphrag.query.llm.base import BaseLLM, BaseTextEmbedding
-from graphrag.query.llm.get_client import get_llm, get_text_embedder
+#from graphrag.query.llm.base import BaseLLM, BaseTextEmbedding
+#from graphrag.query.llm.get_client import get_llm, get_text_embedder
 from graphrag.query.structured_search.local_search.mixed_context import LocalSearchMixedContext
 from graphrag.query.structured_search.local_search.search import LocalSearch
 from graphrag.vector_stores.lancedb import LanceDBVectorStore
@@ -21,6 +21,10 @@ from pydantic import BaseModel, Field
 
 from ._config import LocalContextConfig, SearchConfig
 from ._config import LocalDataConfig as DataConfig
+
+from graphrag.config.load_config import load_config
+from graphrag.language_model.protocol.base import ChatModel, EmbeddingModel
+from graphrag.language_model.manager import ModelManager
 
 _default_context_config = LocalContextConfig()
 _default_search_config = SearchConfig()
@@ -102,8 +106,8 @@ class LocalSearchTool(BaseTool[LocalSearchToolArgs, LocalSearchToolReturn]):
 
     Args:
         token_encoder (tiktoken.Encoding): The tokenizer used for text encoding
-        llm (BaseLLM): The language model to use for search
-        embedder (BaseTextEmbedding): The text embedding model to use
+        chat_model (ChatModel): The language model to use for search
+        embedder (EmbeddingModel): The text embedding model to use
         data_config (DataConfig): Configuration for data source locations and settings
         context_config (LocalContextConfig, optional): Configuration for context building. Defaults to default config.
         search_config (SearchConfig, optional): Configuration for search operations. Defaults to default config.
@@ -112,8 +116,8 @@ class LocalSearchTool(BaseTool[LocalSearchToolArgs, LocalSearchToolReturn]):
     def __init__(
         self,
         token_encoder: tiktoken.Encoding,
-        llm: BaseLLM,
-        embedder: BaseTextEmbedding,
+        chat_model: ChatModel,
+        embedder: EmbeddingModel,
         data_config: DataConfig,
         context_config: LocalContextConfig = _default_context_config,
         search_config: SearchConfig = _default_search_config,
@@ -125,21 +129,22 @@ class LocalSearchTool(BaseTool[LocalSearchToolArgs, LocalSearchToolReturn]):
             description="Perform a local search with given parameters using graphrag.",
         )
         # Use the adapter
-        self._llm = llm
+        self._chat_model = chat_model
         self._embedder = embedder
 
         # Load parquet files
+        community_df: pd.DataFrame = pd.read_parquet(f"{data_config.input_dir}/{data_config.community_table}.parquet")  # type: ignore
         entity_df: pd.DataFrame = pd.read_parquet(f"{data_config.input_dir}/{data_config.entity_table}.parquet")  # type: ignore
-        entity_embedding_df: pd.DataFrame = pd.read_parquet(  # type: ignore
-            f"{data_config.input_dir}/{data_config.entity_embedding_table}.parquet"
-        )
+        # entity_embedding_df: pd.DataFrame = pd.read_parquet(  # type: ignore
+        #     f"{data_config.input_dir}/{data_config.entity_embedding_table}.parquet"
+        # )
         relationship_df: pd.DataFrame = pd.read_parquet(  # type: ignore
             f"{data_config.input_dir}/{data_config.relationship_table}.parquet"
         )
         text_unit_df: pd.DataFrame = pd.read_parquet(f"{data_config.input_dir}/{data_config.text_unit_table}.parquet")  # type: ignore
 
         # Read data using indexer adapters
-        entities = read_indexer_entities(entity_df, entity_embedding_df, data_config.community_level)
+        entities = read_indexer_entities(entity_df, community_df, data_config.community_level)
         relationships = read_indexer_relationships(relationship_df)
         text_units = read_indexer_text_units(text_unit_df)
         # Set up vector store for entity embeddings
@@ -179,21 +184,21 @@ class LocalSearchTool(BaseTool[LocalSearchToolArgs, LocalSearchToolReturn]):
         }
 
         self._search_engine = LocalSearch(
-            llm=self._llm,
+            model=self._chat_model,
             context_builder=context_builder,
             token_encoder=token_encoder,
-            llm_params=llm_params,
+            model_params=llm_params,
             context_builder_params=context_builder_params,
             response_type=search_config.response_type,
         )
 
     async def run(self, args: LocalSearchToolArgs, cancellation_token: CancellationToken) -> LocalSearchToolReturn:
-        search_result = await self._search_engine.asearch(args.query)  # type: ignore
+        search_result = await self._search_engine.search(args.query)  # type: ignore
         assert isinstance(search_result.response, str), "Expected response to be a string"
         return LocalSearchToolReturn(answer=search_result.response)
 
     @classmethod
-    def from_settings(cls, settings_path: str | Path) -> "LocalSearchTool":
+    def from_settings(cls, root_dir: str | Path) -> "LocalSearchTool":
         """Create a LocalSearchTool instance from GraphRAG settings file.
 
         Args:
@@ -203,23 +208,32 @@ class LocalSearchTool(BaseTool[LocalSearchToolArgs, LocalSearchToolReturn]):
             An initialized LocalSearchTool instance
         """
         # Load GraphRAG config
-        config = load_config_from_file(settings_path)
+        config = load_config(root_dir = root_dir)
 
         # Initialize token encoder
-        token_encoder = tiktoken.get_encoding(config.encoding_model)
+        token_encoder = tiktoken.get_encoding(config.models["default_embedding_model"].encoding_model)
 
         # Initialize LLM and embedder using graphrag's get_client functions
-        llm = get_llm(config)
-        embedder = get_text_embedder(config)
+        #llm = get_llm(config)
+        chat_model = ModelManager().get_or_create_chat_model(
+            name="local_search",
+            model_type=config.models["default_chat_model"].type,
+            config=config.models["default_chat_model"],
+        )
+        embedder = ModelManager().get_or_create_embedding_model(
+            name="local_search",
+            model_type=config.models["default_embedding_model"].type,
+            config=config.models["default_embedding_model"],
+        )
 
         # Create data config from storage paths
         data_config = DataConfig(
-            input_dir=str(Path(config.storage.base_dir)),
+            input_dir=str(Path(config.output.base_dir)),
         )
 
         return cls(
             token_encoder=token_encoder,
-            llm=llm,
+            chat_model=chat_model,
             embedder=embedder,
             data_config=data_config,
             context_config=_default_context_config,
