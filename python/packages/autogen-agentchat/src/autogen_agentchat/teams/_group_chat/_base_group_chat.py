@@ -175,7 +175,8 @@ class BaseGroupChat(Team, ABC, ComponentBase[BaseModel]):
             # The participant should be able to receive messages from its own topic.
             await runtime.add_subscription(TypeSubscription(topic_type=agent_type, agent_type=agent_type))
             # The participant should be able to receive messages from the group topic.
-            await runtime.add_subscription(TypeSubscription(topic_type=self._group_topic_type, agent_type=agent_type))
+            # 不，这会导致group内每个成员都会收到其他成员的response
+            #await runtime.add_subscription(TypeSubscription(topic_type=self._group_topic_type, agent_type=agent_type))
 
         # Register the group chat manager.
         await self._base_group_chat_manager_class.register(

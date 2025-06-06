@@ -99,7 +99,6 @@ class DebateAssistant(AssistantAgent):
     async def on_messages_stream(
         self, messages: Sequence[BaseChatMessage], cancellation_token: CancellationToken
     ) -> AsyncGenerator[BaseAgentEvent | BaseChatMessage | Response, None]:
-        print("\n\nDebateAssistant on_messages_stream\n\n")
         async for event in super().on_messages_stream(messages, cancellation_token):
             yield event
         

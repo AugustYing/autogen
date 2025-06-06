@@ -600,6 +600,8 @@ class GraphFlow(BaseGroupChat, Component[GraphFlowConfig]):
         self,
         participants: List[ChatAgent],
         graph: DiGraph,
+        group_chat_manager_name="GraphManager",
+        group_chat_manager_class=GraphFlowManager,
         termination_condition: TerminationCondition | None = None,
         max_turns: int | None = None,
         runtime: AgentRuntime | None = None,
@@ -608,7 +610,7 @@ class GraphFlow(BaseGroupChat, Component[GraphFlowConfig]):
         self._input_participants = participants
         self._input_termination_condition = termination_condition
 
-        stop_agent = _StopAgent()
+        #stop_agent = _StopAgent()
         stop_agent_termination = StopMessageTermination()
         termination_condition = (
             stop_agent_termination
@@ -616,11 +618,11 @@ class GraphFlow(BaseGroupChat, Component[GraphFlowConfig]):
             else OrTerminationCondition(stop_agent_termination, termination_condition)
         )
 
-        participants = [stop_agent] + participants
+        #participants = [stop_agent] + participants
         super().__init__(
             participants,
-            group_chat_manager_name="GraphManager",
-            group_chat_manager_class=GraphFlowManager,
+            group_chat_manager_name=group_chat_manager_name,
+            group_chat_manager_class=group_chat_manager_class,
             termination_condition=termination_condition,
             max_turns=max_turns,
             runtime=runtime,
