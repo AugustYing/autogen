@@ -253,7 +253,7 @@ class LedgerGraphFlowManager(GraphFlowManager):
         for speaker_name in speakers:
             speaker_topic_type = self._participant_name_to_topic_type[speaker_name]
             if self._ledger:
-                task_message = TextMessage(content=self._ledger[0].task, source=self._planning_agent.name)
+                task_message = TextMessage(content=self._ledger[0].task, source="user")
                 await self.publish_message(
                     GroupChatAgentResponse(agent_response=Response(chat_message=task_message), agent_name=self._planning_agent.name),
                     topic_id=DefaultTopicId(type=speaker_topic_type),
@@ -268,14 +268,18 @@ class LedgerGraphFlowManager(GraphFlowManager):
             self._active_speakers.append(speaker_name)
     
     async def add_ledger(self):
-        # 取倒序第一个planning agent的规划更新ledger
-        pattern = r"TASK:\s*([^:]+):\s*(.+?)(?=\s*\{TASK_DELIMITER\}|\s*TASK:|$)"
+        # 只取倒序第一个planning agent的规划更新ledger
+        pattern = r"TASK:\s*([^:]+):\s*(.+?)(?=\s*\{TASK_DELIMITER\}|\s*TASK:|$|\s*USER_INPUT:)"
         for message in reversed(self._message_thread):
             if isinstance(message, BaseChatMessage) and message.source == self._planning_agent.name:
-                match = re.findall(pattern, message.content, re.DOTALL)
-                for agent_name, task in match:
-                    self._ledger.append(LedgerItem(agent_name, task))
-                break
+                if "USER_INPUT" in message.content:
+                    self._ledger.append(LedgerItem("user_proxy", ""))
+                    break
+                else:
+                    match = re.findall(pattern, message.content, re.DOTALL)
+                    for agent_name, task in match:
+                        self._ledger.append(LedgerItem(agent_name, task))
+                    break
     
     async def update_message_thread(self, messages: Sequence[BaseAgentEvent | BaseChatMessage]) -> None:
         self._message_thread.extend(messages)
@@ -307,6 +311,8 @@ class LedgerGraphFlowManager(GraphFlowManager):
         # 调用model_client，获取task的完成情况
         context = self._thread_to_context()
         ledger_item = self._ledger.popleft()
+        if ledger_item.agent_name == "user_proxy":
+            return 
         task = ledger_item.agent_name + ": " + ledger_item.task
         progress_ledger_prompt = self._get_progress_ledger_prompt(
             task, self._team_description
