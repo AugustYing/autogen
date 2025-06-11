@@ -4,6 +4,7 @@ BaseChatAgent is the base class for all agents in AgentChat.
 """
 
 from ._assistant_agent import AssistantAgent
+from ._langgraph_agent import LangGraphAgent
 from ._debate_assistant import DebateAssistant
 from ._base_chat_agent import BaseChatAgent
 from ._code_executor_agent import CodeExecutorAgent
@@ -15,6 +16,7 @@ __all__ = [
     "BaseChatAgent",
     "AssistantAgent",
     "DebateAssistant",
+    "LangGraphAgent",
     "CodeExecutorAgent",
     "SocietyOfMindAgent",
     "UserProxyAgent",

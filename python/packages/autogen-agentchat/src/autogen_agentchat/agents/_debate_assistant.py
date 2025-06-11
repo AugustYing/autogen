@@ -1,7 +1,3 @@
-import asyncio
-import json
-import logging
-import warnings
 from typing import (
     Any,
     AsyncGenerator,
@@ -9,54 +5,22 @@ from typing import (
     Callable,
     Dict,
     List,
-    Mapping,
-    Optional,
     Sequence,
-    Tuple,
-    Union,
 )
 
+from pydantic import BaseModel
 from autogen_core import CancellationToken, Component, ComponentModel, FunctionCall
 from autogen_core.memory import Memory
-from autogen_core.model_context import (
-    ChatCompletionContext,
-    UnboundedChatCompletionContext,
-)
-from autogen_core.models import (
-    AssistantMessage,
-    ChatCompletionClient,
-    CreateResult,
-    FunctionExecutionResult,
-    FunctionExecutionResultMessage,
-    LLMMessage,
-    ModelFamily,
-    SystemMessage,
-)
-from autogen_core.tools import BaseTool, FunctionTool, StaticWorkbench, Workbench
-from pydantic import BaseModel
-from typing_extensions import Self
-
+from autogen_core.model_context import ChatCompletionContext
+from autogen_core.models import ChatCompletionClient
+from autogen_core.tools import BaseTool, Workbench
 from ._assistant_agent import AssistantAgent
-from .. import EVENT_LOGGER_NAME
 from ..base import Handoff as HandoffBase
 from ..base import Response
 from ..messages import (
     BaseAgentEvent,
-    BaseChatMessage,
-    HandoffMessage,
-    MemoryQueryEvent,
-    ModelClientStreamingChunkEvent,
-    StructuredMessage,
-    StructuredMessageFactory,
-    TextMessage,
-    ThoughtEvent,
-    ToolCallExecutionEvent,
-    ToolCallRequestEvent,
-    ToolCallSummaryMessage,
+    BaseChatMessage
 )
-from ..state import AssistantAgentState
-from ..utils import remove_images
-from ._base_chat_agent import BaseChatAgent
 
 class DebateAssistant(AssistantAgent):
     def __init__(

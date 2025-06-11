@@ -81,7 +81,8 @@ class ChatAgentContainer(SequentialRoutedAgent):
                     await self._log_message(msg.chat_message)
                     response = msg
                 else:
-                    await self._log_message(msg)
+                    if isinstance(msg, BaseAgentEvent) or isinstance(msg, BaseChatMessage):
+                        await self._log_message(msg)
             if response is None:
                 raise ValueError(
                     "The agent did not produce a final response. Check the agent's on_messages_stream method."

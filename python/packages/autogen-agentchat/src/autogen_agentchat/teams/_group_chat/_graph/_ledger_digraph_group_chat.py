@@ -269,7 +269,7 @@ class LedgerGraphFlowManager(GraphFlowManager):
     
     async def add_ledger(self):
         # 只取倒序第一个planning agent的规划更新ledger
-        pattern = r"TASK:\s*([^:]+):\s*(.+?)(?=\s*\{TASK_DELIMITER\}|\s*TASK:|$|\s*USER_INPUT:)"
+        pattern = r"TASK:\s*([^:]+):\s*(.+?)(?=\s*\{DELIMITER\}|\s*TASK:|$|\s*USER_INPUT:)"
         for message in reversed(self._message_thread):
             if isinstance(message, BaseChatMessage) and message.source == self._planning_agent.name:
                 if "USER_INPUT" in message.content:
